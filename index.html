@@ -16,10 +16,10 @@
         #sidebar { width: 200px; background: #ffffff; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
         #sidebar-header { background: #075e54; color: white; padding: 15px; font-weight: bold; text-align: center; font-size: 14px; }
         #user-list { flex: 1; overflow-y: auto; padding: 10px; }
-        .user-item { padding: 8px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #333; font-weight: bold; }
+        .user-item { padding: 8px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: bold; }
         .user-status { width: 10px; height: 10px; background: #25d366; border-radius: 50%; box-shadow: 0 0 5px #25d366; }
         #main-chat { flex: 1; display: flex; flex-direction: column; background: #e5ddd5; position: relative; }
-        #chat-header { background: #eee; padding: 10px 15px; border-bottom: 1px solid #ccc; font-weight: bold; color: #555; }
+        #chat-header { background: #eee; padding: 10px 15px; border-bottom: 1px solid #ccc; font-weight: bold; color: #555; display: flex; justify-content: space-between; }
         #box { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 8px; }
         .msg { background: white; padding: 8px 12px; border-radius: 10px; max-width: 80%; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-wrap: break-word; }
         .msg b { display: block; font-size: 11px; color: #075e54; margin-bottom: 2px; }
@@ -29,23 +29,25 @@
         .send-btn { background: #128c7e; color: white; border: none; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; font-size: 20px; }
         img { max-width: 100%; border-radius: 5px; margin-top: 5px; display: block; }
         .status-msg { font-size: 11px; color: #075e54; padding: 5px; background: #dcf8c6; text-align: center; display: none; }
+        .logout-btn { background: #ff5f56; color: white; border: none; padding: 5px; cursor: pointer; font-size: 10px; width: 100%; }
     </style>
 </head>
 <body>
     <div id="auth">
-        <h3>Введите данные</h3>
+        <h3>Вход</h3>
         <input type="text" id="nameInp" placeholder="Ваше Имя">
         <input type="password" id="passInp" placeholder="Пароль">
         <button onclick="login()">ВОЙТИ</button>
     </div>
     <div id="sidebar">
-        <div id="sidebar-header">СЕЙЧАС В ЧАТЕ</div>
+        <div id="sidebar-header">В СЕТИ</div>
         <div id="user-list"></div>
+        <button class="logout-btn" onclick="location.reload()">ВЫЙТИ ИЗ ЧАТА</button>
     </div>
     <div id="main-chat">
-        <div id="chat-header">Секретный канал</div>
+        <div id="chat-header">Секретный Канал <span id="myName"></span></div>
         <div id="box"></div>
-        <div id="st" class="status-msg">Загрузка файла...</div>
+        <div id="st" class="status-msg">Файл загружается...</div>
         <footer>
             <input type="file" id="fInp" style="display:none" onchange="upload(this.files[0])">
             <button onclick="document.getElementById('fInp').click()" style="background:none; border:none; font-size:24px; cursor:pointer;">📎</button>
@@ -56,26 +58,34 @@
     <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.4.21.7.min.js"></script>
     <script>
         let user = ""; let pn;
-        const channelName = 'chat-sidebar-final-v3';
+        const channelName = 'chat-sidebar-v4';
 
         function login() {
             const p = document.getElementById('passInp').value;
             user = document.getElementById('nameInp').value.trim();
             if (p === PASS && user !== "") {
                 document.getElementById('auth').style.display = 'none';
+                document.getElementById('myName').innerText = '(' + user + ')';
                 start();
             } else { alert("Ошибка!"); }
         }
 
         function start() {
-            pn = new PubNub({ publishKey: 'demo', subscribeKey: 'demo', uuid: user });
+            // Уменьшаем таймаут присутствия до минимума
+            pn = new PubNub({ publishKey: 'demo', subscribeKey: 'demo', uuid: user, presenceTimeout: 20 });
             pn.subscribe({ channels: [channelName], withPresence: true });
+            
             pn.addListener({
                 message: (m) => render(m.message, m.publisher === user, m.publisher),
                 presence: () => updatePresence()
             });
-            // Обновляем список каждые 3 секунды принудительно
-            setInterval(updatePresence, 3000);
+
+            // Когда пользователь закрывает вкладку
+            window.addEventListener('beforeunload', () => {
+                pn.unsubscribe({ channels: [channelName] });
+            });
+
+            setInterval(updatePresence, 2000);
             updatePresence();
         }
 
@@ -83,7 +93,6 @@
             pn.hereNow({ channels: [channelName], includeUUIDs: true }, (s, r) => {
                 const occupants = r.channels[channelName].occupants;
                 const listDiv = document.getElementById('user-list');
-                // Собираем список имен, исключая повторы
                 const names = [...new Set(occupants.map(u => u.uuid))];
                 listDiv.innerHTML = names.map(n => `<div class="user-item"><div class="user-status"></div><span>${n}</span></div>`).join('');
             });
@@ -92,10 +101,8 @@
         function render(data, isMy, name) {
             const d = document.createElement('div');
             d.className = 'msg' + (isMy ? ' my' : '');
-            let h = `<b>${name}</b>`;
-            if (data.t === 'txt') h += `<span>${data.v}</span>`;
-            if (data.t === 'img') h += `<img src="${data.v}" onclick="window.open(this.src)">`;
-            d.innerHTML = h; document.getElementById('box').appendChild(d);
+            d.innerHTML = `<b>${name}</b>` + (data.t === 'txt' ? `<span>${data.v}</span>` : `<img src="${data.v}" onclick="window.open(this.src)">`);
+            document.getElementById('box').appendChild(d);
             document.getElementById('box').scrollTop = document.getElementById('box').scrollHeight;
         }
 
