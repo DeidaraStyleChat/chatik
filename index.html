@@ -3,51 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Приватный Чат</title>
+    <title>Приватный Чат PRO</title>
     <style>
-        /* Стили для окна входа */
-        #auth-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #075e54; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; }
-        #auth-screen input { padding: 10px; border-radius: 10px; border: none; margin-bottom: 10px; width: 200px; text-align: center; }
-        
-        /* Стили чата (те же, что были) */
         body { font-family: sans-serif; background: #e5ddd5; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* Экран входа */
+        #auth-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #075e54; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; gap: 10px; }
+        #auth-screen input { padding: 12px; border-radius: 10px; border: none; width: 220px; text-align: center; font-size: 16px; }
+        #auth-screen button { background: #25d366; color: white; border: none; padding: 12px 40px; border-radius: 10px; cursor: pointer; font-weight: bold; }
+
+        /* Шапка */
+        header { background: #075e54; color: white; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        #online-list { font-style: italic; color: #dcf8c6; }
+
+        /* Зона чата */
         #chat-ui { display: none; flex-direction: column; height: 100vh; }
-        #box { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
-        .msg { background: white; padding: 10px; border-radius: 10px; max-width: 80%; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        #box { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 8px; }
+        
+        /* Сообщения */
+        .msg { background: white; padding: 8px 12px; border-radius: 10px; max-width: 80%; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-wrap: break-word; }
+        .msg b { display: block; font-size: 11px; color: #075e54; margin-bottom: 3px; }
         .my { align-self: flex-end; background: #dcf8c6; }
-        footer { background: #eee; padding: 10px; display: flex; gap: 10px; }
-        input[type="text"] { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ccc; outline: none; }
-        button { background: #128c7e; color: white; border: none; padding: 10px 15px; border-radius: 20px; cursor: pointer; }
-        img { max-width: 100%; border-radius: 5px; }
+        
+        /* Подвал */
+        footer { background: #eee; padding: 10px; display: flex; gap: 10px; align-items: center; border-top: 1px solid #ccc; }
+        input[type="text"] { flex: 1; padding: 12px; border-radius: 20px; border: 1px solid #ccc; outline: none; }
+        .btn-icon { background: none; border: none; font-size: 24px; cursor: pointer; color: #555; }
+        .send-btn { background: #128c7e; color: white; border: none; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; font-size: 20px; flex-shrink: 0; }
+        
+        img { max-width: 100%; border-radius: 5px; margin-top: 5px; cursor: pointer; }
     </style>
 </head>
-<body>
+<body ondragover="event.preventDefault()" ondrop="handleDrop(event)">
 
     <div id="auth-screen">
-        <h3>Вход в систему</h3>
-        <input type="password" id="passInput" placeholder="Введите пароль">
-        <button onclick="checkPass()">Войти</button>
-        <p id="error" style="color: #ff8a8a; display: none;">Неверный пароль!</p>
+        <h3>Вход в чат</h3>
+        <input type="text" id="nameInput" placeholder="Ваше Имя">
+        <input type="password" id="passInput" placeholder="Пароль">
+        <button onclick="checkPass()">ВОЙТИ</button>
+        <p id="error" style="color: #ff8a8a; display: none;">Ошибка входа!</p>
     </div>
 
     <div id="chat-ui">
+        <header>
+            <span>В сети: <span id="online-list">загрузка...</span></span>
+        </header>
         <div id="box"></div>
         <footer>
-            <input type="file" id="fileInput" style="display:none" onchange="sendFile()">
-            <button type="button" onclick="document.getElementById('fileInput').click()">📎</button>
-            <input type="text" id="msgInput" placeholder="Сообщение...">
-            <button onclick="sendText()">➤</button>
+            <input type="file" id="fileInput" style="display:none" onchange="handleFile(this.files[0])">
+            <button class="btn-icon" onclick="document.getElementById('fileInput').click()">📎</button>
+            <input type="text" id="msgInput" placeholder="Пиши тут или вставь картинку..." onpaste="handlePaste(event)">
+            <button class="send-btn" onclick="sendText()">➤</button>
         </footer>
     </div>
 
     <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.4.21.7.min.js"></script>
     <script>
-        // ТУТ ЗАДАЕТСЯ ПАРОЛЬ! Поменяй '1234' на свой
-        const SECRET_PASSWORD = '1607'; 
+        const SECRET_PASSWORD = '1234'; // ПОМЕНЯЙ ПАРОЛЬ ТУТ
+        let myName = "";
+        let pubnub;
 
         function checkPass() {
             const pass = document.getElementById('passInput').value;
-            if (pass === SECRET_PASSWORD) {
+            myName = document.getElementById('nameInput').value.trim();
+            if (pass === SECRET_PASSWORD && myName !== "") {
                 document.getElementById('auth-screen').style.display = 'none';
                 document.getElementById('chat-ui').style.display = 'flex';
                 initChat();
@@ -57,50 +76,66 @@
         }
 
         function initChat() {
-            const pubnub = new PubNub({ publishKey: 'demo', subscribeKey: 'demo', uuid: 'user_' + Math.random().toString(16).slice(2) });
-            pubnub.subscribe({ channels: ['chat-room-unique-123'] }); // Можно поменять ID комнаты на свой случайный
+            pubnub = new PubNub({ publishKey: 'demo', subscribeKey: 'demo', uuid: myName });
+            pubnub.subscribe({ channels: ['super-secret-work-chat'], withPresence: true });
 
             pubnub.addListener({
-                message: function(m) {
-                    const isMy = m.publisher === pubnub.getUUID();
-                    showMsg(m.message, isMy);
-                }
+                message: (m) => showMsg(m.message, m.publisher === myName, m.publisher),
+                presence: () => updateOnlineList()
             });
+            updateOnlineList();
+        }
 
-            window.sendText = function() {
-                const input = document.getElementById('msgInput');
-                if (!input.value) return;
-                pubnub.publish({ channel: 'chat-room-unique-123', message: { type: 'text', val: input.value } });
-                input.value = '';
+        function updateOnlineList() {
+            pubnub.hereNow({ channels: ['super-secret-work-chat'], includeUUIDs: true }, (s, r) => {
+                const users = r.channels['super-secret-work-chat'].occupants.map(u => u.uuid);
+                document.getElementById('online-list').innerText = users.join(', ');
+            });
+        }
+
+        function showMsg(data, isMy, senderName) {
+            const div = document.createElement('div');
+            div.className = 'msg' + (isMy ? ' my' : '');
+            let content = `<b>${senderName}</b>`;
+            if (data.type === 'text') content += `<span>${data.val}</span>`;
+            else if (data.type === 'file') {
+                if (data.fileType.includes('image')) content += `<img src="${data.val}" onclick="window.open(this.src)"><br><small>${data.name}</small>`;
+                else content += `<a href="${data.val}" download="${data.name}">📄 ${data.name}</a>`;
             }
+            div.innerHTML = content;
+            document.getElementById('box').appendChild(div);
+            document.getElementById('box').scrollTop = document.getElementById('box').scrollHeight;
+        }
 
-            window.sendFile = function() {
-                const file = document.getElementById('fileInput').files[0];
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    pubnub.publish({ 
-                        channel: 'chat-room-unique-123', 
-                        message: { type: 'file', val: e.target.result, name: file.name, fileType: file.type } 
-                    });
-                };
-                reader.readAsDataURL(file);
+        function sendText() {
+            const input = document.getElementById('msgInput');
+            if (!input.value) return;
+            pubnub.publish({ channel: 'super-secret-work-chat', message: { type: 'text', val: input.value } });
+            input.value = '';
+        }
+
+        function handleFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                pubnub.publish({ channel: 'super-secret-work-chat', message: { type: 'file', val: e.target.result, name: file.name, fileType: file.type } });
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Вставка из буфера обмена (Ctrl+V)
+        function handlePaste(event) {
+            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+            for (let item of items) {
+                if (item.kind === 'file') handleFile(item.getAsFile());
             }
         }
 
-        function showMsg(data, isMy) {
-            const div = document.createElement('div');
-            div.className = 'msg' + (isMy ? ' my' : '');
-            if (data.type === 'text') {
-                div.innerText = data.val;
-            } else if (data.type === 'file') {
-                if (data.fileType.includes('image')) {
-                    div.innerHTML = `<img src="${data.val}"><br><small>${data.name}</small>`;
-                } else {
-                    div.innerHTML = `<a href="${data.val}" download="${data.name}">📄 ${data.name}</a>`;
-                }
-            }
-            document.getElementById('box').appendChild(div);
-            document.getElementById('box').scrollTop = document.getElementById('box').scrollHeight;
+        // Перетаскивание файла мышкой
+        function handleDrop(event) {
+            event.preventDefault();
+            const file = event.dataTransfer.files[0];
+            handleFile(file);
         }
     </script>
 </body>
